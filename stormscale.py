@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import threading
 import tensorflow as tf
 from keras.models import Sequential
-from keras.layers import Dense, LSTM
+from keras.layers import Dense, LSTM, Dropout
 from flask import Flask, jsonify, request
 import socket
 import seaborn as sns
@@ -30,7 +30,7 @@ class StormScaleUser(HttpUser):
         self.login()
     
     def login(self):
-        payload = {"username": "normaluser1", "password": "admin1"}
+        payload = {"username": "testuser", "password": "password123"}
         response = self.client.post("/api/login", json=payload)
         if response.status_code == 200:
             self.token = response.json().get("token")
@@ -62,31 +62,27 @@ class StormScaleUser(HttpUser):
                 logging.error("Failed to create Dataset")
 
 # AI-Based Performance Prediction
-class StormScalePerformanceAnalyzer:
-    def __init__(self, dataset):
-        self.dataset = dataset
-        self.model = RandomForestRegressor()
+class AIModel:
+    def __init__(self):
+        self.model = Sequential([
+            LSTM(100, activation='relu', return_sequences=True, input_shape=(10, 4)),
+            Dropout(0.2),
+            LSTM(50, activation='relu'),
+            Dense(1)
+        ])
+        self.model.compile(optimizer='adam', loss='mse')
     
-    def train_model(self):
-        df = pd.read_csv(self.dataset)
-        X = df[['requests_per_second', 'cpu_usage', 'memory_usage', 'response_time']]
-        y = df['success_rate']
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        self.model.fit(X_train, y_train)
-        logging.info("AI Model Trained for Predicting Performance Bottlenecks")
+    def train(self, X, y):
+        self.model.fit(X, y, epochs=10, batch_size=32, verbose=1)
     
     def predict(self, X_new):
-        return self.model.predict([X_new])
+        return self.model.predict(np.array([X_new]))
 
-# Advanced Deep Learning Model for Performance Prediction
-def build_lstm_model():
-    model = Sequential([
-        LSTM(50, activation='relu', return_sequences=True, input_shape=(10, 4)),
-        LSTM(50, activation='relu'),
-        Dense(1)
-    ])
-    model.compile(optimizer='adam', loss='mse')
-    return model
+# AI-driven Anomaly Detection
+def detect_anomalies(data):
+    threshold = data['response_time'].mean() + (2 * data['response_time'].std())
+    anomalies = data[data['response_time'] > threshold]
+    return anomalies
 
 # System Resource Monitoring
 def monitor_system_resources():
@@ -108,16 +104,19 @@ def get_system_status():
     disk = psutil.disk_usage('/').percent
     return jsonify({"cpu": cpu, "memory": memory, "disk": disk})
 
-@app.route('/advanced-metrics', methods=['GET'])
-def get_advanced_metrics():
+@app.route('/predict', methods=['POST'])
+def predict_performance():
+    data = request.get_json()
+    X_new = np.array(data['features'])
+    model = AIModel()
+    prediction = model.predict(X_new)
+    return jsonify({"predicted_performance": prediction.tolist()})
+
+@app.route('/detect-anomalies', methods=['GET'])
+def anomaly_detection():
     df = pd.read_csv("performance_data.csv")
-    stats = {
-        "avg_response_time": df['response_time'].mean(),
-        "peak_cpu_usage": df['cpu_usage'].max(),
-        "peak_memory_usage": df['memory_usage'].max(),
-        "total_requests": len(df)
-    }
-    return jsonify(stats)
+    anomalies = detect_anomalies(df)
+    return anomalies.to_json()
 
 # Auto-scaling performance testing
 def auto_scale_tests():
